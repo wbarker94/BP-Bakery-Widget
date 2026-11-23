@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bakery Production</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F4F6F9;        /* light background */
+    --navy:#1B3664;      /* BP navy (headings, selected) */
+    --red:#D2212F;       /* accent bar */
+    --amber:#C77A14;     /* glaze (big numbers) */
+    --amber-soft:#FFF3E0;
+    --tile:#FFFFFF;
+    --line:#DCE2E9;
+    --text:#14202C;
+    --muted:#5B6773;
+    --blue:#1F5FA8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:transparent}
+  body{font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text)}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+
+  /* 856 x 559 (about 3:2) at every width, 220px to 900px */
+  .widget{
+    container-type:inline-size;position:relative;overflow:hidden;
+    width:100%;min-width:220px;max-width:900px;margin:0 auto;
+    aspect-ratio:856 / 559;display:flex;flex-direction:column;
+    background:radial-gradient(90% 70% at 85% 0%,var(--amber-soft) 0%,transparent 60%),var(--bg);
+    box-shadow:inset 0 0 0 1px var(--line);
+    border-radius:clamp(10px,1.6cqi,14px);border-top:clamp(3px,.6cqi,5px) solid var(--red);
+  }
+  .rings{position:absolute;left:0;right:0;bottom:0;width:100%;height:auto;opacity:.16;pointer-events:none}
+  .inner{position:relative;flex:1;display:flex;flex-direction:column;padding:2.6cqi 3.2cqi;gap:1.6cqi;min-height:0}
+
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .eyebrow{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:700;text-transform:uppercase;
+        letter-spacing:.08em;color:var(--red);font-size:clamp(10px,1.6cqi,14px)}
+  h1{font-family:"Barlow Condensed","Arial Narrow",Impact,sans-serif;font-weight:700;text-transform:uppercase;
+     font-size:clamp(16px,4.2cqi,36px);line-height:1;color:var(--navy)}
+  .right{display:flex;align-items:flex-start;gap:1.4cqi}
+  .when{text-align:right;white-space:nowrap}
+  .sdate{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:700;font-size:clamp(13px,2.6cqi,23px);line-height:1.05}
+  .file{color:var(--muted);font-size:clamp(9px,1.4cqi,12px);max-width:28cqi;overflow:hidden;text-overflow:ellipsis}
+  .up{display:inline-flex;align-items:center;gap:.4em;border:1px solid var(--navy);color:var(--navy);border-radius:999px;
+      padding:.35em .9em;font-weight:600;font-size:clamp(9px,1.5cqi,13px);white-space:nowrap;background:var(--tile)}
+  .up svg{width:1.1em;height:1.1em}
+  .up:focus-visible,.seg button:focus-visible,.status button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+  /* Summary */
+  .now{display:grid;grid-template-columns:1.25fr 1fr;gap:2cqi;align-items:center}
+  .total{font-family:"Barlow Condensed","Arial Narrow",Impact,sans-serif;font-weight:700;line-height:.9;color:var(--amber);
+        font-size:clamp(34px,9.5cqi,82px);font-variant-numeric:tabular-nums}
+  .tlabel{font-weight:600;font-size:clamp(11px,2cqi,17px);margin-top:.3cqi}
+  .tsub{color:var(--muted);font-size:clamp(9px,1.5cqi,13px);margin-top:.2cqi}
+  .stats{display:grid;gap:.8cqi}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;gap:8px;background:var(--tile);
+        border:1px solid var(--line);border-radius:clamp(6px,1cqi,9px);padding:.8cqi 1.6cqi;font-size:clamp(9px,1.6cqi,14px)}
+  .stat span{color:var(--muted)}
+  .stat b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* View toggle */
+  .fc{display:flex;flex-direction:column;gap:1cqi;flex:1;min-height:0}
+  .seg{align-self:flex-start;display:inline-flex;background:#E6EAF0;border-radius:999px;padding:2px}
+  .seg button{font-weight:600;font-size:clamp(9px,1.5cqi,13px);padding:.3em 1em;border-radius:999px;color:var(--muted)}
+  .seg button[aria-selected="true"]{background:var(--navy);color:#fff}
+
+  /* Cards */
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2cqi;flex:1;min-height:0}
+  .card{background:var(--tile);border:1px solid var(--line);border-radius:clamp(6px,1cqi,9px);
+        padding:1.2cqi 1.3cqi;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .cards.short{flex:0 0 auto;align-items:start}
+  .cn{font-weight:600;font-size:clamp(9px,1.6cqi,14px);color:var(--navy)}
+  .cq{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:700;font-size:clamp(16px,4cqi,34px);line-height:1;
+      font-variant-numeric:tabular-nums;margin-top:.4cqi}
+  .cq small{font-family:"Barlow",sans-serif;font-weight:500;font-size:.38em;color:var(--muted);margin-left:.25em}
+  .cs{color:var(--muted);font-size:clamp(8px,1.35cqi,12px);margin-top:.2cqi}
+  .list{list-style:none;margin-top:.8cqi;border-top:1px solid var(--line);padding-top:.5cqi;overflow:auto;min-height:0}
+  .list li{display:grid;grid-template-columns:1fr auto auto;gap:.8cqi;align-items:baseline;font-size:clamp(8px,1.3cqi,11.5px);
+           padding:.25cqi 0;font-variant-numeric:tabular-nums}
+  .list .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list .se{color:var(--muted)}
+  .list .q{font-weight:600;text-align:right;min-width:2.2em}
+  .list li.z .q{color:var(--muted);font-weight:400}
+  .key{color:var(--muted);font-size:clamp(8px,1.2cqi,11px);text-align:right;margin-top:-.4cqi}
+
+  /* Invoice list */
+  .inv{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:min-content;gap:.6cqi 1.2cqi;flex:1;min-height:0;overflow:auto;align-content:start}
+  .inv .row{display:grid;grid-template-columns:auto 1fr auto;gap:.8cqi;align-items:baseline;background:var(--tile);border:1px solid var(--line);
+            border-radius:clamp(5px,.8cqi,8px);padding:.6cqi 1cqi;font-size:clamp(8px,1.35cqi,12px);font-variant-numeric:tabular-nums;min-width:0}
+  .inv .id{color:var(--muted)}
+  .inv .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .inv .q{font-weight:700}
+
+  .status{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.4cqi;
+          color:var(--muted);font-size:clamp(11px,2cqi,16px);text-align:center;padding:0 4cqi}
+  .status b{color:var(--text);font-size:clamp(12px,2.4cqi,20px)}
+  .status .acts{display:flex;gap:1cqi;flex-wrap:wrap;justify-content:center}
+  .status button{border:1px solid var(--navy);color:var(--navy);border-radius:999px;padding:.4em 1.1em;font-weight:600;background:var(--tile)}
+  .status button.primary{background:var(--navy);color:#fff}
+  .status .err{color:var(--red)}
+  .widget:not(.ready) .now,.widget:not(.ready) .fc,.widget:not(.ready) .when,.widget:not(.ready) .up{display:none}
+  .widget.ready .status{display:none}
+
+  @container (max-width:640px){
+    .list .se,.key{display:none}
+    .inv{grid-template-columns:repeat(3,1fr)}
+  }
+  @container (max-width:520px){
+    .file,.tsub{display:none}
+    .list{display:none}
+    .now{grid-template-columns:1.3fr 1fr}
+    .inv{grid-template-columns:repeat(2,1fr)}
+    .inv .id{display:none}
+    .inv .row{grid-template-columns:1fr auto}
+    .cards{flex:0 0 auto;align-items:start}
+    .up .lbl{display:none}
+  }
+  @container (max-width:340px){
+    h1{display:none}
+    .eyebrow{font-size:12px}
+    .stats{display:none}
+    .now{grid-template-columns:1fr}
+    .cards{grid-template-columns:repeat(2,1fr)}
+    .inv{grid-template-columns:1fr}
+    .seg button{padding:.25em .7em}
+    .inner{gap:1.2cqi}
+  }
+</style>
+</head>
+<body>
+<section class="widget" id="bk" aria-labelledby="bk-title">
+  <!-- donut motif -->
+  <svg class="rings" viewBox="0 0 900 90" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <g fill="none" stroke="#C77A14" stroke-width="10">
+      <circle cx="70" cy="70" r="34"/><circle cx="210" cy="78" r="28"/><circle cx="350" cy="68" r="36"/>
+      <circle cx="500" cy="80" r="26"/><circle cx="640" cy="70" r="34"/><circle cx="790" cy="76" r="30"/>
+    </g>
+  </svg>
+
+  <div class="inner">
+    <div class="top">
+      <div><div class="eyebrow">Bakery production</div><h1 id="bk-title">Catcher Sheet</h1></div>
+      <div class="right">
+        <div class="when"><div class="sdate" id="sdate"></div><div class="file" id="file"></div></div>
+        <button class="up" type="button" id="upBtn" aria-label="Upload a new sheet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+          <span class="lbl">Upload</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="status" id="status" role="status">
+      <b>No production numbers yet</b>
+      <span id="status-msg">Upload today's Catcher Sheet to show the totals here.</span>
+      <div class="acts">
+        <button class="primary" type="button" id="pick">Upload sheet</button>
+        <button type="button" id="sample">Show sample</button>
+      </div>
+    </div>
+
+    <div class="now">
+      <div>
+        <div class="total" id="total">0</div>
+        <div class="tlabel">pieces to produce</div>
+        <div class="tsub" id="tsub"></div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="fc">
+      <div class="seg" role="tablist" aria-label="View for">
+        <button role="tab" data-v="production">Production</button>
+        <button role="tab" data-v="delivery">Delivery</button>
+        <button role="tab" data-v="invoice">Invoice</button>
+      </div>
+      <div id="body" class="cards"></div>
+    </div>
+  </div>
+  <input type="file" id="file-in" accept=".xlsx,.xls,.csv" hidden>
+</section>
+
+<script>
+(function(){
+  const root = document.getElementById('bk');
+  const $ = id => document.getElementById(id);
+  const KEY = 'bakery-widget';
+  let state = null, view = 'production';
+
+  const SAMPLE = {file:'Sample Catcher Sheet', date:null, items:[
+    ['168','Sour Cream Cake',36,80],['123','Blueberry Cake',36,60],['216','Cinnamon Sugar Rings',12,30],
+    ['105D','Strawberry Frost w. White Drizzle',25,60],['106S','Maple Frosted Rings',25,40],
+    ['107','Chocolate Frost w. LTO Sprinkles',25,48],['102','Chocolate Frosted',25,72],['101','Glazed',25,120],
+    ['11B','Bavarian Custard Filled Shells',30,45],['33B','Holland Crème Filled Shells',30,36],
+    ['289','Wild Berry Donut',30,24],['100','Jelly w. Red Drizzle Shells',30,40],
+    ['108','Long Johns',18,36,true],['219','Glazed Pull-Apart',20,20,true],['129','Cinnamon Rolls',36,40,true]
+  ].map(([code,name,per,total,fl]) => ({code,name,per,total,flights:!!fl}))};
+
+  /* ---------- helpers ---------- */
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const f1 = n => n.toLocaleString('en-US',{maximumFractionDigits:1});
+  const f2 = n => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pl = (n,w) => n + ' ' + w + (n === 1 ? '' : 's');
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const num = v => { if (v === null || v === undefined || v === '') return null; const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g,'')); return isFinite(n) ? n : null; };
+  const titleCase = s => String(s).toLowerCase().replace(/\s+/g,' ').trim()
+      .replace(/(^|[\s(-])([a-zà-ÿ])/g,(m,a,b) => a + b.toUpperCase()).replace(/\bW\. /g,'w. ').replace(/\bLto\b/g,'LTO').replace(/\bDrzzle\b/g,'Drizzle');
+
+  function dateText(v){
+    if (v === null || v === undefined || v === '') return '';
+    let d = v instanceof Date ? v : (typeof v === 'number' && v > 20000) ? new Date(Math.round((v - 25569) * 864e5)) : new Date(v);
+    if (isNaN(d)) return String(v);
+    if (typeof v === 'number') return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'});
+    return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  }
+
+  /* ---------- read the Catcher Sheet layout ---------- */
+  function parseRows(rows){
+    const hi = rows.findIndex(r => r && r.some(c => /^\s*product\s*$/i.test(String(c ?? ''))) && r.some(c => /^\s*total\s*$/i.test(String(c ?? ''))));
+    if (hi < 0) return null;
+    let date = null;
+    rows.forEach(r => r && r.forEach((c, j) => {
+      if (date === null && typeof c === 'string' && /^\s*date\s*:?\s*$/i.test(c))
+        for (let k = j + 1; k < r.length; k++) if (r[k] !== null && r[k] !== '') { date = r[k]; break; }
+    }));
+    const h = rows[hi].map(c => String(c ?? '').trim().toLowerCase());
+    const col = { code:h.findIndex(x => x.startsWith('item')), name:h.indexOf('product'), per:h.indexOf('per screen'), total:h.indexOf('total') };
+    const items = []; let flights = false;
+    for (let i = hi + 1; i < rows.length; i++){
+      const r = rows[i] || [];
+      const label = r.find(x => typeof x === 'string' && x.trim());
+      if (label && /total produced/i.test(label)) break;
+      const name = r[col.name];
+      if (!name || !String(name).trim()){ if (r.some(x => /flight/i.test(String(x ?? '')))) flights = true; continue; }
+      items.push({ code: col.code >= 0 && r[col.code] !== null ? String(r[col.code]).trim() : '', name: titleCase(name),
+                   per: num(r[col.per]), total: num(r[col.total]) || 0, flights });
+    }
+    if (date instanceof Date) date = date.toISOString();
+    return { date, items };
+  }
+
+  /* ---------- the spreadsheet's calculations ---------- */
+  function station(it){
+    const n = it.name.toLowerCase();
+    if (it.flights || /long john|pull-apart|cinnamon roll/.test(n)) return 'Specialty';
+    if (/cake/.test(n) && it.per === 36) return 'Cake';
+    if (it.per === 30 || /shell|filled|wild berry/.test(n)) return 'Filled shells';
+    return 'Yeast rings';
+  }
+  function enrich(items){
+    return items.map(it => {
+      const full = it.per ? Math.floor(it.total / it.per) : 0;
+      return { ...it, full, each: it.total - full * (it.per || 0), station: station(it) };
+    });
+  }
+  const sum = (items, st, re) => items.filter(i => i.station === st && (!re || re.test(i.name.toLowerCase()))).reduce((s, i) => s + i.total, 0);
+  function rondo(items){   // Rondo sheet: buffers, then pieces / 472 = bags, bags / 3 = batches
+    const pieces = (sum(items,'Yeast rings') + 12) + (sum(items,'Filled shells') + 6) +
+      (sum(items,'Specialty',/long john/) + 6) + (sum(items,'Specialty',/pull-apart/) + 6) + (sum(items,'Specialty',/cinnamon roll/) + 6);
+    const bags = pieces / 472;
+    return { pieces, bags, batches: bags / 3 };
+  }
+  function cakeMix(items, re, k1, k2, k3, mixPct, waterPct){   // Cake Mixing sheet
+    const rings = items.filter(i => re.test(i.name.toLowerCase())).reduce((s, i) => s + i.total, 0) + 24;
+    const lb = ((rings * k1) * k2 + k3) / 16, w = lb * waterPct, wl = Math.floor(w);
+    return { rings, mix: lb * mixPct, waterLb: wl, waterOz: (w - wl) * 16 };
+  }
+
+  /* ---------- render ---------- */
+  function stat(label, value){ return '<div class="stat"><span>' + label + '</span><b>' + value + '</b></div>'; }
+
+  function render(){
+    if (!state){ root.classList.remove('ready'); return; }
+    const items = enrich(state.items);
+    const total = items.reduce((s, i) => s + i.total, 0);
+    const withQty = items.filter(i => i.total);
+    $('sdate').textContent = dateText(state.date) || 'Today';
+    $('file').textContent = state.file; $('file').title = state.file;
+    $('total').textContent = fmt(total);
+    $('tsub').textContent = withQty.length + ' of ' + items.length + ' products have a total';
+
+    const r = rondo(items);
+    const bb = cakeMix(items, /blueberry cake/, 1.005, 1.8, 88, 0.6896, 0.3104);
+    const sc = cakeMix(items, /sour cream cake/, 1.05, 1.08, 48, 0.7299, 0.2804);
+    const body = $('body');
+
+    if (view === 'production'){
+      $('stats').innerHTML = stat('Rondo dough pieces', fmt(r.pieces)) + stat('Bags of mix', f2(r.bags)) + stat('Batches', f2(r.batches));
+      body.className = 'cards';
+      body.innerHTML = ['Cake','Yeast rings','Filled shells','Specialty'].map(st => {
+        const list = items.filter(i => i.station === st);
+        const sub = list.reduce((s, i) => s + i.total, 0), scr = list.reduce((s, i) => s + i.full, 0);
+        const fl = list.some(i => i.flights);
+        return '<div class="card"><div class="cn">' + st + '</div><div class="cq">' + fmt(sub) + '</div><div class="cs">' + pl(scr,'full screen') + '</div>' +
+          '<ul class="list">' + list.map(i => '<li class="' + (i.total ? '' : 'z') + '" title="' + esc(i.name + ': ' + i.full + ' screens + ' + i.each + (i.flights ? ' flights' : ' each')) + '">' +
+            '<span class="nm">' + esc(i.name) + '</span><span class="se">' + (i.total ? i.full + '+' + i.each : '') + '</span><span class="q">' + (i.total ? fmt(i.total) : '—') + '</span></li>').join('') +
+          '</ul>' + '</div>';
+      }).join('');
+    } else if (view === 'delivery'){
+      $('stats').innerHTML = stat('Yeast dough pieces', fmt(r.pieces)) + stat('Blueberry rings', fmt(bb.rings)) + stat('Sour cream rings', fmt(sc.rings));
+      body.className = 'cards short';
+      body.innerHTML =
+        '<div class="card"><div class="cn">Yeast donut mix</div><div class="cq">' + f2(r.bags) + '<small>bags</small></div><div class="cs">472 pieces per bag</div></div>' +
+        '<div class="card"><div class="cn">Yeast batches</div><div class="cq">' + f2(r.batches) + '<small>batches</small></div><div class="cs">3 bags per batch</div></div>' +
+        '<div class="card"><div class="cn">Blueberry cake mix</div><div class="cq">' + f1(bb.mix) + '<small>lb</small></div><div class="cs">Water ' + bb.waterLb + ' lb ' + f1(bb.waterOz) + ' oz</div></div>' +
+        '<div class="card"><div class="cn">Sour cream cake mix</div><div class="cq">' + f1(sc.mix) + '<small>lb</small></div><div class="cs">Water ' + sc.waterLb + ' lb ' + f1(sc.waterOz) + ' oz</div></div>';
+    } else {
+      const top = withQty.slice().sort((a, b) => b.total - a.total)[0];
+      $('stats').innerHTML = stat('Products with a total', withQty.length) + stat('Largest order', top ? esc(top.name) : '—') + stat('Item numbers', items.filter(i => i.code).length);
+      body.className = 'inv';
+      const list = withQty.length ? withQty : items;
+      body.innerHTML = list.map(i => '<div class="row" title="' + esc(i.name) + '"><span class="id">' + esc(i.code) + '</span><span class="nm">' + esc(i.name) + '</span><span class="q">' + (i.total ? fmt(i.total) : '—') + '</span></div>').join('');
+    }
+
+    document.querySelectorAll('.seg button').forEach(b => {
+      const on = b.dataset.v === view; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1;
+    });
+    root.classList.add('ready');
+  }
+
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify({ state, view })); } catch(e){} }
+
+  function showError(msg){
+    state = null; root.classList.remove('ready');
+    $('status-msg').innerHTML = '<span class="err">' + esc(msg) + '</span>';
+  }
+
+  /* ---------- upload ---------- */
+  function readFile(f){
+    if (!f) return;
+    if (!/\.(xlsx|xls|csv)$/i.test(f.name)){ showError(f.name + " isn't a spreadsheet. Choose an .xlsx, .xls or .csv file."); return; }
+    if (typeof XLSX === 'undefined'){ showError('The spreadsheet reader did not load. Check the connection and try again.'); return; }
+    const rd = new FileReader();
+    rd.onload = e => {
+      try{
+        const book = XLSX.read(new Uint8Array(e.target.result), { type:'array', cellDates:true });
+        const names = book.SheetNames.slice().sort((a, b) => (/catcher/i.test(b) ? 1 : 0) - (/catcher/i.test(a) ? 1 : 0));
+        let found = null;
+        for (const n of names){
+          const parsed = parseRows(XLSX.utils.sheet_to_json(book.Sheets[n], { header:1, raw:true, defval:null }));
+          if (parsed && parsed.items.length){ found = parsed; break; }
+        }
+        if (!found){ showError("Couldn't find a Product and Total column in " + f.name + '.'); return; }
+        state = { file: f.name, date: found.date, items: found.items };
+        save(); render();
+      }catch(err){ showError("Couldn't read " + f.name + '. Save it as .xlsx and try again.'); }
+    };
+    rd.onerror = () => showError("Couldn't open " + f.name + '. Try choosing it again.');
+    rd.readAsArrayBuffer(f);
+  }
+
+  const input = $('file-in');
+  input.addEventListener('change', e => { readFile(e.target.files[0]); input.value = ''; });
+  $('pick').addEventListener('click', () => input.click());
+  $('upBtn').addEventListener('click', () => input.click());
+  $('sample').addEventListener('click', () => { state = JSON.parse(JSON.stringify(SAMPLE)); save(); render(); });
+  ['dragover','dragenter'].forEach(t => root.addEventListener(t, e => e.preventDefault()));
+  root.addEventListener('drop', e => { e.preventDefault(); readFile(e.dataTransfer.files[0]); });
+
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+    view = b.dataset.v; save(); render();
+  }));
+
+  try{
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (s){ if (['production','delivery','invoice'].includes(s.view)) view = s.view; if (s.state && s.state.items) state = s.state; }
+  }catch(e){}
+  render();
+})();
+</script>
+</body>
+</html>
